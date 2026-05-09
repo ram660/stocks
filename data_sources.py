@@ -22,7 +22,12 @@ import config
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_history(ticker: str, period: str = "3mo", interval: str = "1d") -> pd.DataFrame:
-    """Download OHLCV history.  Returns a clean DataFrame or empty."""
+    """Download OHLCV history natively switching to Finnhub if configured."""
+    if config.DATA_SOURCE == "finnhub" and config.FINNHUB_API_KEY:
+        return _finnhub_history(ticker, period, interval)
+    return _yfinance_history(ticker, period, interval)
+
+def _yfinance_history(ticker: str, period: str, interval: str) -> pd.DataFrame:
     try:
         df = yf.download(ticker, period=period, interval=interval,
                          auto_adjust=True, progress=False)
@@ -35,7 +40,46 @@ def get_history(ticker: str, period: str = "3mo", interval: str = "1d") -> pd.Da
         df = df[~df.index.duplicated(keep="last")]
         return df
     except Exception as e:
-        st.warning(f"History fetch error: {e}")
+        print(f"YFinance History fetch error: {e}")
+        return pd.DataFrame()
+
+def _finnhub_history(ticker: str, period: str, interval: str) -> pd.DataFrame:
+    """
+    Fetches real-time candles using Finnhub.
+    Resolutions: 1, 5, 15, 30, 60, D, W, M
+    """
+    try:
+        # Match YFinance interval string to Finnhub resolution
+        res_map = {"1m": "1", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "1d": "D", "1wk": "W", "1mo": "M"}
+        resolution = res_map.get(interval, "D")
+        
+        # Calculate start/end timestamps based on period proxy string
+        end_time = int(time.time())
+        days_back = 5
+        if period == "1mo": days_back = 30
+        elif period == "3mo": days_back = 90
+        elif period == "6mo": days_back = 180
+        elif period == "1y": days_back = 365
+        start_time = end_time - (days_back * 24 * 60 * 60)
+        
+        url = f"https://finnhub.io/api/v1/stock/candle?symbol={ticker}&resolution={resolution}&from={start_time}&to={end_time}&token={config.FINNHUB_API_KEY}"
+        r = requests.get(url, timeout=5).json()
+        
+        if r.get("s") != "ok":
+            return pd.DataFrame()
+            
+        df = pd.DataFrame({
+            "Open": r["o"],
+            "High": r["h"],
+            "Low": r["l"],
+            "Close": r["c"],
+            "Volume": r["v"]
+        })
+        # Keep time index format matching YFinance
+        df.index = pd.to_datetime(r["t"], unit='s')
+        return df
+    except Exception as e:
+        print(f"Finnhub History fetch error: {e}")
         return pd.DataFrame()
 
 

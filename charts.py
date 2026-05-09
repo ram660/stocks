@@ -217,3 +217,123 @@ def build_macd_chart(df: pd.DataFrame) -> go.Figure | None:
         hovermode="x unified",
     )
     return fig
+
+def build_tv_1h_chart(df: pd.DataFrame) -> go.Figure:
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        row_heights=[0.60, 0.20, 0.20],
+        vertical_spacing=0.02,
+        subplot_titles=("", "", ""),
+    )
+    # Candlestick
+    fig.add_trace(go.Candlestick(
+        x=df.index, open=df["Open"], high=df["High"],
+        low=df["Low"], close=df["Close"],
+        increasing_line_color=COLORS["green"],
+        decreasing_line_color=COLORS["red"],
+        name="Price", showlegend=False
+    ), row=1, col=1)
+    
+    # Supertrend
+    if "Supertrend" in df.columns:
+        up_mask = df["Supertrend_Dir"] == 1
+        down_mask = df["Supertrend_Dir"] == -1
+        
+        st_up = df["Supertrend"].copy()
+        st_up[~up_mask] = None
+        st_down = df["Supertrend"].copy()
+        st_down[~down_mask] = None
+        
+        fig.add_trace(go.Scatter(x=df.index, y=st_up, line=dict(color="#00c853", width=2), name="Supertrend Up"), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=st_down, line=dict(color="#ff1744", width=2), name="Supertrend Down"), row=1, col=1)
+        
+    # MACD subplot
+    if "MACD" in df.columns:
+        fig.add_trace(go.Bar(
+            x=df.index, y=df["MACD_Hist"],
+            marker_color=[COLORS["green"] if v >= 0 else COLORS["red"] for v in df["MACD_Hist"].fillna(0)],
+            name="MACD Hist"
+        ), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["MACD"], line=dict(color=COLORS["blue"], width=1.5), name="MACD"), row=2, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["MACD_Signal"], line=dict(color=COLORS["yellow"], width=1.5), name="Signal"), row=2, col=1)
+
+    # DMI subplot
+    if "DMI_Plus" in df.columns and "DMI_Minus" in df.columns:
+        fig.add_trace(go.Scatter(x=df.index, y=df["DMI_Plus"], line=dict(color=COLORS["blue"], width=1.5), name="+DI"), row=3, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=df["DMI_Minus"], line=dict(color=COLORS["ema9"], width=1.5), name="-DI"), row=3, col=1)
+        
+    fig.update_layout(
+        paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["panel"],
+        font=dict(color=COLORS["white"], family="Inter, sans-serif"),
+        xaxis_rangeslider_visible=False,
+        showlegend=False,
+        margin=dict(l=10, r=40, t=10, b=10),
+        height=700,
+        hovermode="x unified",
+    )
+    for ax in ["xaxis", "xaxis2", "xaxis3"]: fig.update_layout(**{ax: dict(gridcolor="#21262d", showgrid=True, zeroline=False)})
+    for ax in ["yaxis", "yaxis2", "yaxis3"]: fig.update_layout(**{ax: dict(gridcolor="#21262d", showgrid=True, zeroline=False, side="right")})
+    return fig
+
+def build_tv_15m_chart(df: pd.DataFrame) -> go.Figure:
+    fig = go.Figure()
+    # Candlestick
+    fig.add_trace(go.Candlestick(
+        x=df.index, open=df["Open"], high=df["High"],
+        low=df["Low"], close=df["Close"],
+        increasing_line_color=COLORS["green"],
+        decreasing_line_color=COLORS["red"],
+        name="Price", showlegend=False
+    ))
+    
+    if "Supertrend" in df.columns:
+        up_mask = df["Supertrend_Dir"] == 1
+        down_mask = df["Supertrend_Dir"] == -1
+        
+        st_up = df["Supertrend"].copy()
+        st_up[~up_mask] = None
+        st_down = df["Supertrend"].copy()
+        st_down[~down_mask] = None
+        
+        fig.add_trace(go.Scatter(x=df.index, y=st_up, line=dict(color="#00c853", width=2), name="Supertrend Up"))
+        fig.add_trace(go.Scatter(x=df.index, y=st_down, line=dict(color="#ff1744", width=2), name="Supertrend Down"))
+        
+        # Add buy/sell markers where direction changes
+        direction_changes = df["Supertrend_Dir"].diff()
+        buy_signals = df[direction_changes == 2]
+        sell_signals = df[direction_changes == -2]
+        
+        if not buy_signals.empty:
+            fig.add_trace(go.Scatter(
+                x=buy_signals.index, y=buy_signals["Low"] * 0.999,
+                mode="markers+text",
+                marker=dict(symbol="triangle-up", size=14, color=COLORS["green"]),
+                text=["Buy"] * len(buy_signals), textposition="bottom center",
+                textfont=dict(color=COLORS["green"], size=10),
+                name="Buy"
+            ))
+            
+        if not sell_signals.empty:
+            fig.add_trace(go.Scatter(
+                x=sell_signals.index, y=sell_signals["High"] * 1.001,
+                mode="markers+text",
+                marker=dict(symbol="triangle-down", size=14, color=COLORS["red"]),
+                text=["Sell"] * len(sell_signals), textposition="top center",
+                textfont=dict(color=COLORS["red"], size=10),
+                name="Sell"
+            ))
+            
+    fig.update_layout(
+        paper_bgcolor=COLORS["bg"], plot_bgcolor=COLORS["panel"],
+        font=dict(color=COLORS["white"], family="Inter, sans-serif"),
+        xaxis_rangeslider_visible=False,
+        showlegend=False,
+        margin=dict(l=10, r=40, t=10, b=10),
+        height=700,
+        hovermode="x unified",
+        xaxis=dict(gridcolor="#21262d", showgrid=True, zeroline=False),
+        yaxis=dict(gridcolor="#21262d", showgrid=True, zeroline=False, side="right")
+    )
+    return fig
+

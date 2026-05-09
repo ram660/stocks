@@ -14,6 +14,10 @@ import data_sources
 import signals as sig_engine
 import charts
 import options_view
+import alerts
+
+if "last_alerted" not in st.session_state:
+    st.session_state.last_alerted = {}
 
 # ─────────────────────────────── Page config ────────────────────────────────
 st.set_page_config(
@@ -116,22 +120,38 @@ if not ticker:
     st.stop()
 
 with st.spinner(f"Loading data for **{ticker}**…"):
-    df_raw    = data_sources.get_history(ticker, period=tf["period"], interval=tf["interval"])
+    df_1h_raw = data_sources.get_history(ticker, period="1mo", interval="1h")
+    df_15m_raw = data_sources.get_history(ticker, period="5d", interval="15m")
     quote     = data_sources.get_quote(ticker)
     fund      = data_sources.get_fundamentals(ticker)
 
-if df_raw.empty:
+if df_1h_raw.empty or df_15m_raw.empty:
     st.error(f"Could not load data for **{ticker}**. Check the ticker symbol and try again.")
     st.stop()
 
 # ────────────────────────────── Signal engine ────────────────────────────────
-result   = sig_engine.run_signals(df_raw)
-df       = result["df"]
+# Main verdict from 1h
+result   = sig_engine.run_signals(df_1h_raw)
+df_1h    = result["df"]
 verdict  = result["verdict"]
 score    = result["score"]
 signals  = result["signals"]
 
+# Run signals for 15m to get indicators
+res_15 = sig_engine.run_signals(df_15m_raw)
+df_15m = res_15["df"]
+sigs_15m = res_15["signals"]
 
+# Process alerts (avoids duplicate alerts for the exact same bar timestamp)
+if not df_15m.empty:
+    current_time_str = str(df_15m.index[-1])
+    if current_time_str != st.session_state.last_alerted.get(ticker):
+        for s in sigs_15m:
+            if s["signal"] in ["BUY", "SELL"]:
+                alerts.send_telegram_alert(ticker, s["name"], s["signal"], s.get("note", ""))
+                st.session_state.last_alerted[ticker] = current_time_str
+                break
+                
 # ═══════════════════════════════ HEADER ROW ══════════════════════════════════
 st.markdown(f"## {fund.get('name', ticker)}  `{ticker}`")
 col_price, col_chg, col_vol, col_cap, col_sector = st.columns([2, 1.5, 1.5, 1.5, 2])
@@ -182,21 +202,19 @@ with tab_chart:
         st.metric("🔴 SELL signals", sell_count)
         st.metric("🟡 WATCH flags",  wtch_count)
 
-    # Main chart
-    fig = charts.build_main_chart(
-        df, signals,
-        show_emas=selected_emas,
-        show_bb=show_bb,
-        show_vwap=show_vwap,
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-    # MACD sub-panel
-    if show_macd:
-        macd_fig = charts.build_macd_chart(df)
-        if macd_fig:
-            st.markdown("##### MACD")
-            st.plotly_chart(macd_fig, use_container_width=True)
+    # TradingView style split screen
+    st.markdown("---")
+    col_1h, col_15m = st.columns([1, 1])
+    
+    with col_1h:
+        st.markdown(f"**{ticker} - 1h**")
+        fig_1h = charts.build_tv_1h_chart(df_1h)
+        st.plotly_chart(fig_1h, use_container_width=True)
+        
+    with col_15m:
+        st.markdown(f"**{ticker} - 15m**")
+        fig_15m = charts.build_tv_15m_chart(df_15m)
+        st.plotly_chart(fig_15m, use_container_width=True)
 
     # Fundamentals row
     if fund:
@@ -263,8 +281,8 @@ with tab_signals:
     }
     snap_data = {}
     for label, col in snap_cols.items():
-        if col in df.columns:
-            last_val = df[col].dropna().iloc[-1] if not df[col].dropna().empty else None
+        if col in df_1h.columns:
+            last_val = df_1h[col].dropna().iloc[-1] if not df_1h[col].dropna().empty else None
             snap_data[label] = round(last_val, 2) if last_val is not None else "—"
     if snap_data:
         snap_df = pd.DataFrame(snap_data.items(), columns=["Indicator", "Last Value"])
@@ -300,7 +318,7 @@ with tab_settings:
     # Re-run signals with the new active map
     st.markdown("---")
     if st.button("🔁 Re-calculate Signals with current settings"):
-        result2  = sig_engine.run_signals(df_raw, active_conditions=active_map)
+        result2  = sig_engine.run_signals(df_1h_raw, active_conditions=active_map)
         verdict2 = result2["verdict"]
         score2   = result2["score"]
         sigs2    = result2["signals"]

@@ -18,6 +18,42 @@ import config
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _compute_supertrend(df: pd.DataFrame, period=10, multiplier=3) -> pd.DataFrame:
+    close = df['Close'].values
+    high = df['High'].values
+    low = df['Low'].values
+    
+    hl2 = (high + low) / 2
+    atr_ind = ta.volatility.AverageTrueRange(high=df['High'], low=df['Low'], close=df['Close'], window=period)
+    atr = atr_ind.average_true_range().values
+    
+    ub = hl2 + (multiplier * atr)
+    lb = hl2 - (multiplier * atr)
+    
+    supertrend = np.zeros(len(df))
+    direction = np.zeros(len(df))
+    
+    in_uptrend = True
+    for i in range(1, len(df)):
+        # Calculate in_uptrend based on previous bounds
+        if close[i] > ub[i-1]:
+            in_uptrend = True
+        elif close[i] < lb[i-1]:
+            in_uptrend = False
+        
+        # Adjust bounds
+        if in_uptrend and lb[i] < lb[i-1]:
+            lb[i] = lb[i-1]
+        elif not in_uptrend and ub[i] > ub[i-1]:
+            ub[i] = ub[i-1]
+            
+        supertrend[i] = lb[i] if in_uptrend else ub[i]
+        direction[i] = 1 if in_uptrend else -1
+        
+    df['Supertrend'] = supertrend
+    df['Supertrend_Dir'] = direction
+    return df
+
 def _add_indicators(df: pd.DataFrame) -> pd.DataFrame:
     """Compute all indicators in-place and return enriched DataFrame."""
     close = df["Close"].squeeze()
@@ -51,6 +87,15 @@ def _add_indicators(df: pd.DataFrame) -> pd.DataFrame:
 
     # Volume moving average
     df["Vol_Avg"] = vol.rolling(config.VOLUME_WINDOW).mean()
+
+    # Supertrend
+    df = _compute_supertrend(df, period=10, multiplier=3)
+
+    # DMI
+    adx_ind = ta.trend.ADXIndicator(high=df['High'], low=df['Low'], close=df['Close'], window=14)
+    df["DMI_Plus"] = adx_ind.adx_pos()
+    df["DMI_Minus"] = adx_ind.adx_neg()
+    df["DMI_ADX"] = adx_ind.adx()
 
     return df
 
