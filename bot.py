@@ -25,6 +25,19 @@ BOT_STATE = {
     "last_15m_dir": None
 }
 
+# Announce server startup to Telegram
+try:
+    if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_IDS:
+        print("Transmitting startup initialization sequence to Telegram...")
+        alerts.send_telegram_alert(
+            "SYSTEM", 
+            "Instance Booted", 
+            "ONLINE", 
+            "🤖 Headless Options Bot is up and running securely! Live market tracking has commenced."
+        )
+except Exception as e:
+    print(f"Startup alert failed: {e}")
+
 TICKER = "SPY"
 POLL_INTERVAL = 60  # seconds
 
