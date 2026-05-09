@@ -166,14 +166,17 @@ TIMEFRAME_OPTIONS = {
     "2 Years":  {"period": "2y",  "interval": "1wk"},
 }
 
+import os
+
 # ---------------------------------------------------------------------------
 # Data source
 # ---------------------------------------------------------------------------
-DATA_SOURCE = "finnhub"   # "yfinance" | "finnhub"
-FINNHUB_API_KEY = "d7vbodpr01qp7l71ms00d7vbodpr01qp7l71ms0g"       # paste your key here if using Finnhub
+DATA_SOURCE = os.getenv("DATA_SOURCE", "finnhub")   # "yfinance" | "finnhub"
+FINNHUB_API_KEY = os.getenv("FINNHUB_API_KEY", "")       # paste your key here if using Finnhub
 
 # ---------------------------------------------------------------------------
 # Telegram Alerts Configuration
 # ---------------------------------------------------------------------------
-TELEGRAM_BOT_TOKEN = "7640892255:AAFJNOmGrxVihKrhxmCw0wBn7i390anMoNc" # Enter your bot token here
-TELEGRAM_CHAT_IDS = ["744709775"]  # List of string chat IDs, e.g. ["123456789", "987654321"]
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "") # Enter your bot token here
+_ids = os.getenv("TELEGRAM_CHAT_IDS", "744709775")
+TELEGRAM_CHAT_IDS = [x.strip() for x in _ids.split(",")]  # List of string chat IDs
