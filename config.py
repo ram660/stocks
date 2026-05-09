@@ -167,6 +167,10 @@ TIMEFRAME_OPTIONS = {
 }
 
 import os
+from dotenv import load_dotenv
+
+# Load secret environment variables out of the local .env file
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Data source
